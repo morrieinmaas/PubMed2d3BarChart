@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en-US">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Type" content="text/html">
+  <title>PubMed query Web Service</title>
+  <meta name="author" content="Moritz Schlichting">
+  <link rel="stylesheet" type="text/css" media="all" href="css/styles.css">
+  <script type="text/javascript" src="js/jquery-1.10.2.min.js"></script>
+  <script src="http://d3js.org/d3.v3.min.js"></script>
+  <script src="http://labratrevenge.com/d3-tip/javascripts/d3.tip.v0.6.3.js"></script>
+</head>
+
+<body>
+  <div id="w">
+    <h1>Present stats for disease query term over a time interval</h1>
+    <p>Enter a disease term, a starting date and a stopping date</p>
+    <p>This queries the pubmed database. The annual numbers of publications for the specidied disease are retrieved and plotted a sa bar chart with number of results/publications by year.</p>
+
+    <input type="text" name="diseasequery" id="diseasequery" placeholder="Disease query term...">
+    <br>
+    <br>
+    <input type="text" name="startyear" id="startyear" placeholder="YYYY...">
+    <br>
+    <br>
+    <input type="text" name="stopyear" id="stopyear" placeholder="YYYY...">
+
+    <a href="#" id="dqsubmitbtn">Pull Disease Data</a>
+
+    <div id="dqapidata" class="clearfix"></div>
+  </div>
+<script type="text/javascript">
+
+$(function(){
+  $('#dqsubmitbtn').on('click', function(e){
+    e.preventDefault();
+    $('#dqapidata').html('<div id="loader"><img src="css/loader.gif" alt="loading..."></div>');
+
+    var dq       = $('#diseasequery').val();
+    var dqstart  = $('#startyear').val();
+    var dqstop   = $('#stopyear').val();
+    var yeariter = 0;
+    var years = [];
+    var startint = parseInt(dqstart);
+    var stopint = parseInt(dqstop)
+    var count_years = [];
+    var the_data = [];
+    var counts_annual = [];
+
+    //while (startint + yeariter <= stopint){
+
+    for (var i = startint; i <= stopint; i++){
+        console.log(i);
+        years.push(i);
+        var query0 = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term='+dq+'&mindate='+(i).toString()+'&maxdate='+(i).toString()+'&datetype=pdat&rettypye=count&retmode=json&rettype=count';
+        //console.log(query0);
+
+        requestJSON(query0, function(json) {
+          if(json.message == "Not Found" || dq == '') {
+            $('#dqapidata').html("<h2>No Disease Info Found</h2>");
+          } else if (dqstart >= dqstop) {
+            $('#dqapidata').html("<h2>Please enter a star date prior to the end date</h2>");
+          }
+
+          else {
+            if (json.esearchresult.count != 0){
+              counts_annual.push(parseInt(json.esearchresult.count));
+              the_data.push({
+                key:    i,
+                value:  parseInt(json.esearchresult.count)
+              });
+            } else if (json.esearchresult.count == 0){
+              counts_annual.push(0);
+              the_data.push({
+                key:    i,
+                value:  0
+              });
+            }
+            if (i == stopint){
+                console.log('I can see you');
+                var outhtml =  '<h2>'+'The Results ' + '</h2>';
+                outhtml = outhtml + '<p>'+'Occ.:  ' + counts_annual + '</p>';
+                outhtml = outhtml + '<p>'+'Year: ' + years + '</p>';
+                outhtml = outhtml + '<div id="chart" class="repolist clearfix">';
+                outhtml = outhtml + '<div class="repolist clearfix">';
+
+                //for other api call e.g get body text instead of count;
+                //declare different query'1';
+                var other;
+                $.getJSON(query0, function(json){
+                  other = json;
+                  outputPageContent();
+                  printBar(the_data);
+                });
+
+                function outputPageContent() {
+                  if(years.length == 0) { outhtml = outhtml + '<p>No results! Please, enter a longer time period.</p></div>'; }
+                  else {
+                    outhtml = outhtml + '</div>';
+                  }
+                  $('#dqapidata').html(outhtml);
+                } // end outputPageContent()
+              }
+            }
+          });
+        }
+  }); // end click event handler
+
+  function requestJSON(url, callback) {
+    return $.ajax({
+      url: url,
+      async: false,
+      complete: function(xhr) {
+        callback.call(null, xhr.responseJSON);
+      }
+    });
+  }
+
+  function printBar(a){
+
+    var data = a;
+
+    var margin = {top: 40, right: 20, bottom: 30, left: 40},
+    width = 600 - margin.left - margin.right,
+    height = 400 - margin.top - margin.bottom;
+
+    var formatPercent = d3.format("0");
+
+    var x = d3.scale.ordinal()
+        .rangeRoundBands([0, width], .1);
+
+    var y = d3.scale.linear()
+        .range([height, 0]);
+
+    var xAxis = d3.svg.axis()
+        .scale(x)
+        .orient("bottom");
+
+    var yAxis = d3.svg.axis()
+        .scale(y)
+        .orient("left")
+        .tickFormat(formatPercent);
+
+    var tip = d3.tip()
+      .attr('class', 'd3-tip')
+      .offset([-10, 0])
+      .html(function(d) {
+        return "<strong></strong> <span style='color:red'>" + d.value + "</span>";
+      })
+
+    var svg = d3.select("#chart").append("svg")
+        .attr("width", width + margin.left + margin.right)
+        .attr("height", height + margin.top + margin.bottom)
+      .append("g")
+        .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+    svg.call(tip);
+
+    x.domain(data.map(function(d) { return d.key; }));
+    y.domain([0, d3.max(data, function(d) { return d.value; })]);
+
+    svg.append("g")
+        .attr("class", "x axis")
+        .attr("transform", "translate(0," + height + ")")
+        .call(xAxis);
+
+    svg.append("g")
+        .attr("class", "y axis")
+        .call(yAxis)
+      .append("text")
+        .attr("transform", "rotate(-90)")
+        .attr("y", 6)
+        .attr("dy", ".71em")
+        .style("text-anchor", "end")
+        .text("Occurences");
+
+    svg.append("text")
+        .attr("x", (width / 2))
+        .attr("y", 0 - (margin.top / 2))
+        .attr("text-anchor", "middle")
+        .style("font-size", "16px")
+        .style("text-decoration", "underline")
+        .text("Query Matches per Year");
+
+    svg.selectAll(".bar")
+        .data(data)
+      .enter().append("rect")
+        .attr("class", "bar")
+        .attr("x", function(d) { return x(d.key); })
+        .attr("width", x.rangeBand())
+        .attr("y", function(d) { return y(d.value); })
+        .attr("height", function(d) { return height - y(d.value); })
+        .on('mouseover', tip.show)
+        .on('mouseout', tip.hide)
+
+    function type(d) {
+      d.value = +d.value;
+      return d;
+    }
+
+
+  }
+});
+
+</script>
+
+</body>
+</html>
